@@ -1,0 +1,7 @@
+# Ignore everything
+*
+
+# Except these files
+!.gitignore
+!bashotron_v2.html
+!bashotron_*.png
