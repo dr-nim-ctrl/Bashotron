@@ -483,10 +483,12 @@ class HaikuGenerator {
         this.markov = markov;
     }
 
-    generateLine(targetSyllables, maxAttempts = 100) {
+    generateLine(targetSyllables, maxAttempts = 100, isFinalLine = false) {
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const words = [];
             let syllables = 0;
+            let wasSearchingForFit = false;  // Track if we had to search for a completing word
+            let completingWordIndex = -1;    // Index of the word that completed the line
 
             let key = this.markov.getRandomStarter();
             const keyWords = key.split(' ');
@@ -506,6 +508,7 @@ class HaikuGenerator {
                 const nextWord = this.markov.getNext(key);
                 if (!nextWord) {
                     key = this.markov.getRandomStarter();
+                    wasSearchingForFit = true;  // We had to restart, so we're searching
                     continue;
                 }
 
@@ -513,9 +516,15 @@ class HaikuGenerator {
                 if (syllables + nextSyllables <= targetSyllables) {
                     words.push(nextWord);
                     syllables += nextSyllables;
+                    // If this word completes the line and we were searching, mark it
+                    if (syllables === targetSyllables && wasSearchingForFit) {
+                        completingWordIndex = words.length - 1;
+                    }
                     key = words.slice(-this.markov.order).join(' ');
+                    wasSearchingForFit = false;  // Reset since we found a valid next word
                 } else if (syllables + nextSyllables > targetSyllables + 1) {
                     key = this.markov.getRandomStarter();
+                    wasSearchingForFit = true;  // We're now searching for something that fits
                 } else {
                     key = words.slice(-this.markov.order).join(' ');
                 }
@@ -526,16 +535,26 @@ class HaikuGenerator {
                 if (isVerb(words[0]) && Math.random() < 0.90) {
                     continue; // Try again
                 }
+
+                // V3 fix: For final line, if we had a completing word at the end, shuffle it
+                if (isFinalLine && completingWordIndex === words.length - 1 && words.length > 1) {
+                    const completingWord = words.pop();
+                    // Insert at random position (0 to words.length, i.e., anywhere except back at end)
+                    const newPosition = Math.floor(Math.random() * words.length);
+                    words.splice(newPosition, 0, completingWord);
+                }
+
                 return words.map(formatWordForDisplay).join(' ');
             }
         }
 
-        return this.generateLineWordByWord(targetSyllables);
+        return this.generateLineWordByWord(targetSyllables, isFinalLine);
     }
 
-    generateLineWordByWord(targetSyllables) {
+    generateLineWordByWord(targetSyllables, isFinalLine = false) {
         const words = [];
         let syllables = 0;
+        let completingWordIndex = -1;
 
         for (let i = 0; i < 20 && syllables < targetSyllables; i++) {
             const remaining = targetSyllables - syllables;
@@ -546,6 +565,18 @@ class HaikuGenerator {
             const word = candidates[Math.floor(Math.random() * candidates.length)];
             words.push(word);
             syllables += countSyllables(word);
+
+            // Mark completing word (last word added when we hit target)
+            if (syllables === targetSyllables) {
+                completingWordIndex = words.length - 1;
+            }
+        }
+
+        // V3 fix: For final line, shuffle the completing word if it's at the end
+        if (isFinalLine && completingWordIndex === words.length - 1 && words.length > 1) {
+            const completingWord = words.pop();
+            const newPosition = Math.floor(Math.random() * words.length);
+            words.splice(newPosition, 0, completingWord);
         }
 
         return words.map(formatWordForDisplay).join(' ');
@@ -554,7 +585,7 @@ class HaikuGenerator {
     generate() {
         const line1 = this.generateLine(5);
         const line2 = this.generateLine(7);
-        const line3 = this.generateLine(5);
+        const line3 = this.generateLine(5, 100, true);  // isFinalLine = true
 
         return { line1, line2, line3 };
     }
