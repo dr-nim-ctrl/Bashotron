@@ -418,12 +418,12 @@ function formatWordForDisplay(word) {
     return word;
 }
 
-// Markov Chain with randomness injection
+// Markov Chain with mixed 2-word/1-word approach
 class MarkovChain {
-    constructor(tokens, order = 2, randomChance = 0.10) {
-        this.order = order;
-        this.randomChance = randomChance;
-        this.chain = {};
+    constructor(tokens) {
+        this.order = 2;  // Primary order for starters
+        this.chain2 = {};  // 2-word chain
+        this.chain1 = {};  // 1-word chain
         this.starters = [];
         this.allWords = [];
         this.build(tokens);
@@ -432,40 +432,62 @@ class MarkovChain {
     build(tokens) {
         const wordSet = new Set();
 
-        for (let i = 0; i < tokens.length - this.order; i++) {
-            const key = tokens.slice(i, i + this.order).join(' ');
-            const next = tokens[i + this.order];
+        // Build 2-word chain
+        for (let i = 0; i < tokens.length - 2; i++) {
+            const key = tokens.slice(i, i + 2).join(' ');
+            const next = tokens[i + 2];
 
-            if (!this.chain[key]) {
-                this.chain[key] = [];
+            if (!this.chain2[key]) {
+                this.chain2[key] = [];
             }
-            this.chain[key].push(next);
+            this.chain2[key].push(next);
 
             // Track all words
-            tokens.slice(i, i + this.order + 1).forEach(t => wordSet.add(t));
+            tokens.slice(i, i + 3).forEach(t => wordSet.add(t));
 
-            // Track sentence starters
+            // Track sentence starters (2-word)
             if (i === 0 || (i > 0 && /[.!?]/.test(tokens[i - 1]))) {
                 this.starters.push(key);
             }
         }
 
+        // Build 1-word chain
+        for (let i = 0; i < tokens.length - 1; i++) {
+            const key = tokens[i];
+            const next = tokens[i + 1];
+
+            if (!this.chain1[key]) {
+                this.chain1[key] = [];
+            }
+            this.chain1[key].push(next);
+        }
+
         this.allWords = Array.from(wordSet);
 
         if (this.starters.length < 100) {
-            this.starters = Object.keys(this.chain);
+            this.starters = Object.keys(this.chain2);
         }
     }
 
     getNext(key) {
-        // 10% chance of completely random word
-        if (Math.random() < this.randomChance) {
-            return this.allWords[Math.floor(Math.random() * this.allWords.length)];
+        // 50% chance of using 2-word chain, 50% chance of using 1-word chain
+        if (Math.random() < 0.5) {
+            // Use 2-word chain
+            const options = this.chain2[key];
+            if (options && options.length > 0) {
+                return options[Math.floor(Math.random() * options.length)];
+            }
         }
 
-        const options = this.chain[key];
-        if (!options || options.length === 0) return null;
-        return options[Math.floor(Math.random() * options.length)];
+        // Use 1-word chain (or fallback if 2-word failed)
+        // Extract last word from the key for 1-word lookup
+        const lastWord = key.split(' ').pop();
+        const options = this.chain1[lastWord];
+        if (options && options.length > 0) {
+            return options[Math.floor(Math.random() * options.length)];
+        }
+
+        return null;
     }
 
     getRandomStarter() {
@@ -1438,7 +1460,7 @@ let haikuGen = null;
 
 function init() {
     corpus = CORPUS_DATA;
-    markov = new MarkovChain(corpus, 2, 0.10); // 10% randomness
+    markov = new MarkovChain(corpus);  // Mixed 2-word/1-word chain
     haikuGen = new HaikuGenerator(markov);
     displayHaiku();
 }
